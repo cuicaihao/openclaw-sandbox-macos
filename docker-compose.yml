@@ -5,15 +5,15 @@ services:
     user: "${OPENCLAW_UID:-501}:${OPENCLAW_GID:-20}"
     restart: unless-stopped
     ports:
-      - "3000:18789"
+      - "127.0.0.1:3000:18789"
     environment:
       - HOME=/home/node
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - OLLAMA_API_KEY=${OLLAMA_API_KEY:-ollama}
-      - OPENCLAW_PROVIDERS_OLLAMA_NUM_CTX=4096
+      - OLLAMA_API_KEY=${OLLAMA_API_KEY}
+      - OPENCLAW_PROVIDERS_OLLAMA_NUM_CTX=16384
       - OPENCLAW_AGENTS_DEFAULTS_MODEL_PRIMARY=batiai/gemma4-e4b:q4
       - OPENCLAW_PROVIDERS_OLLAMA_MODEL=batiai/gemma4-e4b:q4
-      - OPENCLAW_AGENTS_DEFAULTS_THINKING=low
+      - OPENCLAW_AGENTS_DEFAULTS_THINKING=medium
     volumes:
       - ./sandbox:/home/node/.openclaw/workspace
       - ./config:/home/node/.openclaw
