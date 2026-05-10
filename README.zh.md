@@ -26,7 +26,6 @@
 ├── .env.example             # 示例环境变量
 ├── docker-compose.yml       # OpenClaw 的 Docker Compose 配置
 ├── Makefile                 # 用于设置和维护的 Make 命令
-├── start.sh                 # 一键启动脚本
 ├── feature.png              # 项目功能图
 ├── README.md                # 英文文档
 └── README.zh.md             # 中文文档
@@ -64,11 +63,14 @@
     Usage: make [target]
 
     Targets:
-    clean           Kill Ollama memory runners
-    help            Show this help message
-    install         Install dependencies (ollama, colima, docker, etc) 
-    start           Stop existing services, clean runners, and start Colima/OpenClaw
-    stop            Stop OpenClaw containers and Colima
+      clean           Kill Ollama model runners
+      help            Show this help message
+      install         Install dependencies (ollama, colima, docker), pull model, and setup .env
+      ollama-start    Start Ollama with VRAM limit (run this in a separate terminal)
+      ollama-stop     Stop the Ollama server
+      reset           Wipe all data (config/sandbox) and start fresh
+      start           Stop existing services, clean runners, and start Colima/OpenClaw
+      stop            Stop OpenClaw containers and Colima
 
     ```
 
@@ -88,11 +90,11 @@
     ollama serve
     ```
 
-* **Step 3: 拉取推荐模型**:
+* **Step 3: 拉取推荐 Demo 模型**:
 
     ```bash
-    # 推荐 16GB 设备使用的平衡模型
-    ollama pull batiai/gemma4-e4b:q4
+    # 本 Demo 沙箱默认使用的轻量模型
+    ollama pull qwen3.5:0.8b
     ```
 
 * **Step 4: 安装 Colima & Docker**:
@@ -113,13 +115,12 @@
 
 ## 🚀 二、快速启动指南 (Getting Started)
 
-### 1. 一键启动 (推荐)
+### 1. Makefile 启动 (推荐)
 
-环境已完全自动化。使用提供的脚本确保清理所有内存缓存，并以正确的硬件标志启动 Colima。
+环境已通过 Makefile 自动化。使用 `make start` 停止现有服务、清理 Ollama runners、按优化参数启动 Colima、预配置 OpenClaw，并启动容器堆栈。
 
 ```bash
-chmod +x start.sh
-./start.sh
+make start
 ```
 
 ### 2. 手动启动步骤
@@ -202,7 +203,7 @@ flowchart LR
         direction TB
         subgraph Compute["🚀 Native AI Inference Layer"]
             direction TB
-            Ollama["🦙 Ollama Service<br/>Metal GPU Acceleration<br/>Model: gemma4<br/>VRAM ~12GB"]:::compute
+            Ollama["🦙 Ollama Service<br/>Metal GPU Acceleration<br/>Model: qwen3.5:0.8b<br/>Demo-sized local inference"]:::compute
         end
         subgraph VM["🖥️ Colima Virtual Machine"]
             direction TB
@@ -245,19 +246,19 @@ flowchart LR
 
 | 状态                | CONTEXT 大小 | 内存占用 | 系统表现            |
 | :------------------ | :----------- | :------- | :------------------ |
-| **健康 (Healthy)**  | 4096 (4k)    | ~5.8GB   | 运行流畅            |
+| **健康 (Healthy)**  | 16384 (16k)  | 中等内存占用 | 给 OpenClaw 的 Agent/工具上下文留出空间 |
 | **警告 (Warning)**  | 32k - 131k   | ~9GB+    | 开始出现轻微延迟    |
 | **危险 (Critical)** | 262k+        | ~18GB+   | 系统严重卡顿 (Swap) |
 | 状态 | CONTEXT 大小 | 内存占用 | 系统表现 |
 | :--- | :--- | :--- | :--- |
-| **健康 (Healthy)** | 4096 (4k) | ~5.8GB | 运行流畅 |
+| **健康 (Healthy)** | 16384 (16k) | 中等内存占用 | 给 OpenClaw 的 Agent/工具上下文留出空间 |
 | **警告 (Warning)** | 32k - 131k | ~9GB+ | 开始出现轻微延迟 |
 | **危险 (Critical)** | 262k+ | ~18GB+ | 系统严重卡顿 (Swap) |
 
 ### 2. 优化建议
 
-* **上下文大小**: 建议限制在 **8192** 左右以获得最佳稳定性。
-* **模型选择**: 推荐使用 **3B ~ 4B Q4 量化模型**。
+* **上下文大小**: 本 Demo 默认限制为 **16384**，给 OpenClaw 的 Agent 指令、会话状态和工具上下文留出足够空间，同时仍适合轻量 Demo 模型。
+* **模型选择**: 本仓库默认使用轻量 Demo 模型 **`qwen3.5:0.8b`**。如需更高质量，可切换到 **`qwen3.5:4b`**，但会带来更高内存压力。
 
 ---
 
@@ -265,13 +266,16 @@ flowchart LR
 
 ### 1. 核心模型配置
 
-* **主模型 (Primary)**: `batiai/gemma4-e4b:q4` (约 5.3GB VRAM)
-* **备用模型 (Alternative)**: `qwen3.5:2b` `qwen3.5:4b` (4k 自定义上下文变体)
+* **主 Demo 模型 (Primary)**: `qwen3.5:0.8b`
+* **可选更大模型 (Alternative)**: `qwen3.5:4b`，质量更高但内存成本更高
 
 ### 2. 关键环境变量 (Docker Compose)
 
-* `OPENCLAW_PROVIDERS_OLLAMA_NUM_CTX=4096`: 强制请求 4k 上下文限制。
-* `OPENCLAW_AGENTS_DEFAULTS_THINKING=low`: 优化响应速度。
+* `OPENCLAW_PROVIDERS_OLLAMA_NUM_CTX=16384`: 为本地 Ollama 模型请求 16k 上下文窗口。
+* `OPENCLAW_AGENTS_DEFAULTS_MODEL_PRIMARY=ollama/qwen3.5:0.8b`: 设置 Demo 模型。
+* `agents.defaults.thinkingDefault=off`: 为小型本地模型减少 smoke-test 提示词开销。
+* `agents.defaults.experimental.localModelLean=true`: 为较弱本地模型移除较重的默认工具上下文。
+* `tools.profile=coding`: 保留文件/工作区能力，同时避免使用更重的 full 工具配置。
 * `shm_size: '2gb'`: 为浏览器自动化分配充足的共享内存。
 
 ---
@@ -287,7 +291,7 @@ flowchart LR
 
 | 目标                 | 命令                                                     |
 | :------------------- | :------------------------------------------------------- |
-| **完全清理并重启**   | `./start.sh`                                             |
+| **完全清理并重启**   | `make start`                                             |
 | **优雅停止所有服务** | `docker-compose down`                                    |
 | **清除历史与缓存**   | `docker-compose down -v && rm config/memory/main.sqlite` |
 | **检查模型状态**     | `ollama ps`                                              |

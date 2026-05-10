@@ -1,21 +1,21 @@
 # OpenClaw M4 Sandbox GitIgnore
 
-# 1. Ignore everything by default (Safety first)
-config/*
-sandbox/*
+# Runtime state mounted into Docker
+/config/*
+!/config/.gitkeep
+
+/sandbox/*
+!/sandbox/.gitkeep
+
+# Local environment / secrets
 .env
+.env.*
+!.env.example
+
+# macOS
 .DS_Store
 
-# 2. Allow tracking only infrastructure and documentation
-!docker-compose.yml
-!start.sh
-!*.md
-!.gitignore
-
-# 3. Specifically allow .gitkeep files in ignored directories
-!config/.gitkeep
-!sandbox/.gitkeep
-
-# 4. Ignore local artifacts
+# Local artifacts
+schema.json
 *.png
 !feature.png

@@ -11,9 +11,9 @@ services:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - OLLAMA_API_KEY=${OLLAMA_API_KEY}
       - OPENCLAW_PROVIDERS_OLLAMA_NUM_CTX=16384
-      - OPENCLAW_AGENTS_DEFAULTS_MODEL_PRIMARY=batiai/gemma4-e4b:q4
-      - OPENCLAW_PROVIDERS_OLLAMA_MODEL=batiai/gemma4-e4b:q4
-      - OPENCLAW_AGENTS_DEFAULTS_THINKING=medium
+      - OPENCLAW_AGENTS_DEFAULTS_MODEL_PRIMARY=ollama/qwen3.5:0.8b
+      - OPENCLAW_PROVIDERS_OLLAMA_MODEL=ollama/qwen3.5:0.8b
+      - OPENCLAW_GATEWAY_CONTROL_UI_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
     volumes:
       - ./sandbox:/home/node/.openclaw/workspace
       - ./config:/home/node/.openclaw
@@ -24,9 +24,9 @@ services:
       - "no-new-privileges:true"
     cap_drop:
       - "ALL"
-    pids_limit: 128
-    mem_limit: 4g
-    cpus: 4
+    pids_limit: 64
+    mem_limit: 3g
+    cpus: 2
     init: true
     shm_size: '2gb'
     networks:

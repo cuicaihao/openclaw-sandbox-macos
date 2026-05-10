@@ -26,7 +26,6 @@ Due to the physical bottleneck of 16GB unified memory, the concurrent processing
 ├── .env.example             # Example environment variables
 ├── docker-compose.yml       # Docker Compose configuration for OpenClaw
 ├── Makefile                 # Make commands for setup and maintenance
-├── start.sh                 # One-click start script
 ├── feature.png              # Project feature image
 ├── README.md                # English documentation
 └── README.zh.md             # Chinese documentation
@@ -58,11 +57,14 @@ Alternatively, you can use `make` to automatically install dependencies (refer t
 Usage: make [target]
 
 Targets:
-clean           Kill Ollama memory runners
-help            Show this help message
-install         Install dependencies (ollama, colima, docker, etc) 
-start           Stop existing services, clean runners, and start Colima/OpenClaw
-stop            Stop OpenClaw containers and Colima
+  clean           Kill Ollama model runners
+  help            Show this help message
+  install         Install dependencies (ollama, colima, docker), pull model, and setup .env
+  ollama-start    Start Ollama with VRAM limit (run this in a separate terminal)
+  ollama-stop     Stop the Ollama server
+  reset           Wipe all data (config/sandbox) and start fresh
+  start           Stop existing services, clean runners, and start Colima/OpenClaw
+  stop            Stop OpenClaw containers and Colima
 ```
 
 ### 3. Manual Installation Steps
@@ -81,11 +83,11 @@ stop            Stop OpenClaw containers and Colima
     ollama serve
     ```
 
-* **Step 3: Pull Recommended Models**:
+* **Step 3: Pull Recommended Demo Model**:
 
     ```bash
-    # Balanced model recommended for 16GB devices
-    ollama pull batiai/gemma4-e4b:q4
+    # Lightweight default for this demo sandbox
+    ollama pull qwen3.5:0.8b
     ```
 
 * **Step 4: Install Colima & Docker**:
@@ -106,13 +108,12 @@ stop            Stop OpenClaw containers and Colima
 
 ## 🚀 II. Getting Started
 
-### 1. One-Click Start (Recommended)
+### 1. Makefile Start (Recommended)
 
-The environment is fully automated. Use the provided script to ensure all memory caches are cleared and Colima starts with the correct hardware flags.
+The environment is fully automated through the Makefile. Use `make start` to stop existing services, clear Ollama runners, start Colima with the optimized hardware flags, pre-configure OpenClaw, and launch the container stack.
 
 ```bash
-chmod +x start.sh
-./start.sh
+make start
 ```
 
 ### 2. Manual Start Steps
@@ -190,7 +191,7 @@ flowchart LR
         direction TB
         subgraph Compute["🚀 Native AI Inference Layer"]
             direction TB
-            Ollama["🦙 Ollama Service<br/>Metal GPU Acceleration<br/>Model: gemma4<br/>VRAM ~12GB"]:::compute
+            Ollama["🦙 Ollama Service<br/>Metal GPU Acceleration<br/>Model: qwen3.5:0.8b<br/>Demo-sized local inference"]:::compute
         end
         subgraph VM["🖥️ Colima Virtual Machine"]
             direction TB
@@ -233,14 +234,14 @@ Please run `ollama ps` regularly to check memory status:
 
 | Status | Context Size | Memory Usage | System Performance |
 | :--- | :--- | :--- | :--- |
-| **Healthy** | 4096 (4k) | ~5.8GB | Runs smoothly |
+| **Healthy** | 16384 (16k) | Moderate memory footprint | Gives OpenClaw room for agent/tool context |
 | **Warning** | 32k - 131k | ~9GB+ | Slight latency begins to appear |
 | **Critical** | 262k+ | ~18GB+ | Severe system lag (Swap) |
 
 ### 2. Optimization Tips
 
-* **Context Size**: Recommended to limit to around **8192** for best stability.
-* **Model Selection**: Recommended to use **3B ~ 4B Q4 quantized models**.
+* **Context Size**: This demo defaults to **16384** so OpenClaw has enough room for agent instructions, session state, and tool context while staying reasonable for the lightweight demo model.
+* **Model Selection**: This repo defaults to **`qwen3.5:0.8b`** as a lightweight demo model. Use **`qwen3.5:4b`** only when you want better quality and can accept higher memory pressure.
 
 ---
 
@@ -248,13 +249,16 @@ Please run `ollama ps` regularly to check memory status:
 
 ### 1. Core Model Configuration
 
-* **Primary Model**: `batiai/gemma4-e4b:q4` (approx. 5.3GB VRAM)
-* **Alternative Models**: `qwen3.5:2b`, `qwen3.5:4b` (4k custom context variants)
+* **Primary Demo Model**: `qwen3.5:0.8b`
+* **Optional Heavier Model**: `qwen3.5:4b` for better quality at higher memory cost
 
 ### 2. Key Environment Variables (Docker Compose)
 
-* `OPENCLAW_PROVIDERS_OLLAMA_NUM_CTX=4096`: Forces a 4k context limit request.
-* `OPENCLAW_AGENTS_DEFAULTS_THINKING=low`: Optimizes response speed.
+* `OPENCLAW_PROVIDERS_OLLAMA_NUM_CTX=16384`: Requests a 16k context window for the local Ollama model.
+* `OPENCLAW_AGENTS_DEFAULTS_MODEL_PRIMARY=ollama/qwen3.5:0.8b`: Sets the demo model.
+* `agents.defaults.thinkingDefault=off`: Keeps the smoke-test prompt small for tiny local models.
+* `agents.defaults.experimental.localModelLean=true`: Drops heavier default tool context for weaker local models.
+* `tools.profile=coding`: Keeps file/workspace tools available without the heavier full tool profile.
 * `shm_size: '2gb'`: Allocates sufficient shared memory for browser automation.
 
 ---
@@ -270,7 +274,7 @@ Please run `ollama ps` regularly to check memory status:
 
 | Goal | Command |
 | :--- | :--- |
-| **Full Cleanup & Restart** | `./start.sh` |
+| **Full Cleanup & Restart** | `make start` |
 | **Gracefully Stop All Services** | `docker-compose down` |
 | **Clear History & Cache** | `docker-compose down -v && rm config/memory/main.sqlite` |
 | **Check Model Status** | `ollama ps` |
