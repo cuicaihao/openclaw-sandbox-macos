@@ -191,28 +191,28 @@ flowchart LR
         direction TB
         subgraph Compute["🚀 Native AI Inference Layer"]
             direction TB
-            Ollama["🦙 Ollama Service<br/>Metal GPU Acceleration<br/>Model: qwen3.5:0.8b<br/>Demo-sized local inference"]:::compute
+            Ollama["🦙 Ollama<br/>Native macOS service<br/>Metal GPU acceleration<br/>qwen3.5:0.8b • 16k default"]:::compute
         end
-        subgraph VM["🖥️ Colima Virtual Machine"]
+        subgraph VM["🖥️ Colima VM"]
             direction TB
-            VMConfig["⚙️ 6 vCPU • 4GB RAM<br/>Framework: vz + virtiofs"]:::vm
+            VMConfig["⚙️ 6 vCPU • 4GB RAM<br/>vz + virtiofs"]:::vm
             subgraph Docker["🐳 Docker Runtime"]
                 direction TB
-                OpenClaw["🦞 OpenClaw Container<br/>Node.js Runtime<br/>Security Hardened"]:::docker
-                TmpFS[("⚡ tmpfs<br/>Ephemeral /tmp")]:::tmp
+                OpenClaw["🦞 OpenClaw Container<br/>Node.js Gateway<br/>2 CPU / 3GB limit<br/>read-only rootfs"]:::docker
+                TmpFS[("⚡ tmpfs<br/>ephemeral /tmp")]:::tmp
             end
         end
-        subgraph Storage["📁 Persistent Storage Layer"]
+        subgraph Storage["📁 macOS Bind-Mounted Storage"]
             direction LR
-            Config["🧠 ./config<br/>Settings + SQLite"]:::storage
-            Workspace["🛠️ ./sandbox<br/>Workspace Volume"]:::storage
+            Config["🧠 ./config<br/>OpenClaw home<br/>config + tokens + memory"]:::storage
+            Workspace["🛠️ ./sandbox<br/>Agent workspace<br/>created/edited files"]:::storage
         end
     end
 
     Browser -->|"HTTP :3000 → :18789"| OpenClaw
-    OpenClaw -->|"Inference API<br/>host.docker.internal:11434"| Ollama
-    OpenClaw -.->|"VirtioFS Mount"| Config
-    OpenClaw -.->|"Workspace Bind Mount"| Workspace
+    OpenClaw -->|"Ollama API<br/>host.docker.internal:11434"| Ollama
+    OpenClaw -.->|"Bind mount<br/>/home/node/.openclaw"| Config
+    OpenClaw -.->|"Bind mount<br/>/home/node/.openclaw/workspace"| Workspace
     OpenClaw --- TmpFS
 
     style Host fill:#f9fafb,stroke:#111827,stroke-width:4px
@@ -226,22 +226,59 @@ flowchart LR
 
 ## 🧠 IV. Memory & Context Management
 
-In the 16GB Unified Memory (UMA) architecture, preventing memory fragmentation and Swap is key to maintaining performance.
+In the 16GB Unified Memory (UMA) architecture, preventing memory pressure and Swap is key to maintaining performance. A larger context window can keep longer chats alive, but it also increases latency and memory pressure; it does **not** make a tiny model reason better.
 
 ### 1. ⚠️ RAM Monitoring Levels
 
-Please run `ollama ps` regularly to check memory status:
+Please run `ollama ps` regularly to check the loaded model and active context:
 
 | Status | Context Size | Memory Usage | System Performance |
 | :--- | :--- | :--- | :--- |
-| **Healthy** | 16384 (16k) | Moderate memory footprint | Gives OpenClaw room for agent/tool context |
-| **Warning** | 32k - 131k | ~9GB+ | Slight latency begins to appear |
-| **Critical** | 262k+ | ~18GB+ | Severe system lag (Swap) |
+| **Recommended** | 16384 (16k) | Moderate memory footprint | Good default for this 16GB demo setup |
+| **Experimental** | 24576 - 32768 (24k - 32k) | Higher memory pressure | Useful for longer chats; watch macOS memory pressure |
+| **Risky** | 65536+ (64k+) | Heavy memory pressure | Likely slower and less stable on 16GB |
+| **Not recommended** | 131k - 262k | Very heavy memory pressure | The model supports it on paper, but the machine likely will not enjoy it |
 
 ### 2. Optimization Tips
 
 * **Context Size**: This demo defaults to **16384** so OpenClaw has enough room for agent instructions, session state, and tool context while staying reasonable for the lightweight demo model.
 * **Model Selection**: This repo defaults to **`qwen3.5:0.8b`** as a lightweight demo model. Use **`qwen3.5:4b`** only when you want better quality and can accept higher memory pressure.
+* **Quality vs Context**: Increasing context helps with longer conversations, not arithmetic or reasoning quality. If `qwen3.5:0.8b` gives incorrect answers, prefer `qwen3.5:4b` before increasing context.
+* **Measured Baseline**: On a Mac Mini M4 with 16GB RAM, `qwen3.5:0.8b` at 16k showed about `2.4GB` loaded in Ollama, OpenClaw around `538MiB / 3GiB`, and macOS already using compression. That makes **32k** a reasonable experiment, but not a safer default.
+* **32k Test**: To test 32k, set both `OPENCLAW_PROVIDERS_OLLAMA_NUM_CTX=32768` in `docker-compose.yml` and `"contextTokens": 32768` in `config/openclaw.json`, then restart OpenClaw.
+
+### 3. Hardware Sizing Guide
+
+This repository targets a **Mac Mini M4 with 16GB unified memory**, which is excellent for a local OpenClaw demo but not ideal as a full-time local large-model workstation. For Ollama + OpenClaw, memory capacity and memory bandwidth matter more than raw CPU alone.
+
+| Goal | Suggested Mac Class | RAM | SSD | Practical Model Range | Practical Context |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Lightweight demo like this repo | Mac Mini M4 | 16GB | 512GB - 1TB | 0.5B - 4B | 16k default, 32k experimental |
+| Comfortable local agent | Mac Mini M4 Pro / Mac Studio M4 Max | 32GB - 36GB+ | 1TB+ | 4B - 8B | 16k - 32k |
+| Recommended daily-driver setup | Mac Studio M4 Max | 64GB | 1TB - 2TB | 8B - 14B | 32k - 64k |
+| Serious local large-model setup | Mac Studio M4 Max / M3 Ultra | 96GB - 128GB+ | 2TB+ | 14B - 32B | 64k where stable |
+| Enthusiast local experiments | High-memory Mac Studio Ultra | 192GB+ | 4TB+ | 32B - 70B quantized models | Depends on model and speed tolerance |
+
+For this repo's current machine, the practical profile is:
+
+```text
+Mac Mini M4
+CPU/GPU: 10-core CPU / 10-core GPU
+RAM: 16GB unified memory
+SSD: 512GB or 1TB
+Model: qwen3.5:0.8b or qwen3.5:4b
+Context: 16k default, 32k experimental
+```
+
+If you want OpenClaw to feel more like a reliable daily assistant for files, tools, code, and reasoning, the sweet spot is closer to:
+
+```text
+Mac Studio M4 Max
+RAM: 64GB unified memory
+SSD: 2TB
+Model: 8B - 14B
+Context: 32k - 64k
+```
 
 ---
 

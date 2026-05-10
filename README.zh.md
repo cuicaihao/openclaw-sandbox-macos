@@ -168,11 +168,6 @@ make start
 | **Ollama**    | macOS 宿主机 (Native) | GPU 加速推理 (Metal GPU)    |
 | **Colima VM** | 虚拟化层 (vz)         | 提供轻量级 Linux 运行环境   |
 | **OpenClaw**  | Docker 容器           | AI Agent 逻辑编排与沙箱隔离 |
-| 组件 | 运行环境 | 核心职责 |
-| :--- | :--- | :--- |
-| **Ollama** | macOS 宿主机 (Native) | GPU 加速推理 (Metal GPU) |
-| **Colima VM** | 虚拟化层 (vz) | 提供轻量级 Linux 运行环境 |
-| **OpenClaw** | Docker 容器 | AI Agent 逻辑编排与沙箱隔离 |
 
 ### 2. 为什么选择 Colima 而不是 Docker Desktop？
 
@@ -203,28 +198,28 @@ flowchart LR
         direction TB
         subgraph Compute["🚀 Native AI Inference Layer"]
             direction TB
-            Ollama["🦙 Ollama Service<br/>Metal GPU Acceleration<br/>Model: qwen3.5:0.8b<br/>Demo-sized local inference"]:::compute
+            Ollama["🦙 Ollama<br/>Native macOS service<br/>Metal GPU acceleration<br/>qwen3.5:0.8b • 16k default"]:::compute
         end
-        subgraph VM["🖥️ Colima Virtual Machine"]
+        subgraph VM["🖥️ Colima VM"]
             direction TB
-            VMConfig["⚙️ 6 vCPU • 4GB RAM<br/>Framework: vz + virtiofs"]:::vm
+            VMConfig["⚙️ 6 vCPU • 4GB RAM<br/>vz + virtiofs"]:::vm
             subgraph Docker["🐳 Docker Runtime"]
                 direction TB
-                OpenClaw["🦞 OpenClaw Container<br/>Node.js Runtime<br/>Security Hardened"]:::docker
-                TmpFS[("⚡ tmpfs<br/>Ephemeral /tmp")]:::tmp
+                OpenClaw["🦞 OpenClaw Container<br/>Node.js Gateway<br/>2 CPU / 3GB limit<br/>read-only rootfs"]:::docker
+                TmpFS[("⚡ tmpfs<br/>ephemeral /tmp")]:::tmp
             end
         end
-        subgraph Storage["📁 Persistent Storage Layer"]
+        subgraph Storage["📁 macOS Bind-Mounted Storage"]
             direction LR
-            Config["🧠 ./config<br/>Settings + SQLite"]:::storage
-            Workspace["🛠️ ./sandbox<br/>Workspace Volume"]:::storage
+            Config["🧠 ./config<br/>OpenClaw home<br/>config + tokens + memory"]:::storage
+            Workspace["🛠️ ./sandbox<br/>Agent workspace<br/>created/edited files"]:::storage
         end
     end
 
     Browser -->|"HTTP :3000 → :18789"| OpenClaw
-    OpenClaw -->|"Inference API<br/>host.docker.internal:11434"| Ollama
-    OpenClaw -.->|"VirtioFS Mount"| Config
-    OpenClaw -.->|"Workspace Bind Mount"| Workspace
+    OpenClaw -->|"Ollama API<br/>host.docker.internal:11434"| Ollama
+    OpenClaw -.->|"Bind mount<br/>/home/node/.openclaw"| Config
+    OpenClaw -.->|"Bind mount<br/>/home/node/.openclaw/workspace"| Workspace
     OpenClaw --- TmpFS
 
     style Host fill:#f9fafb,stroke:#111827,stroke-width:4px
@@ -238,27 +233,59 @@ flowchart LR
 
 ## 🧠 四、内存与上下文管理 (Memory & Context)
 
-在 16GB 统一内存 (UMA) 架构下，防止内存碎片化和 Swap 是保持性能的关键。
+在 16GB 统一内存 (UMA) 架构下，防止内存压力和 Swap 是保持性能的关键。更大的上下文窗口可以保留更长的对话，但也会增加延迟和内存压力；它**不会**让小模型的推理能力变强。
 
 ### 1. ⚠️ 内存监控分级 (RAM Monitoring)
 
-请定期运行 `ollama ps` 查看内存状态：
+请定期运行 `ollama ps` 查看已加载模型和当前上下文：
 
 | 状态                | CONTEXT 大小 | 内存占用 | 系统表现            |
 | :------------------ | :----------- | :------- | :------------------ |
-| **健康 (Healthy)**  | 16384 (16k)  | 中等内存占用 | 给 OpenClaw 的 Agent/工具上下文留出空间 |
-| **警告 (Warning)**  | 32k - 131k   | ~9GB+    | 开始出现轻微延迟    |
-| **危险 (Critical)** | 262k+        | ~18GB+   | 系统严重卡顿 (Swap) |
-| 状态 | CONTEXT 大小 | 内存占用 | 系统表现 |
-| :--- | :--- | :--- | :--- |
-| **健康 (Healthy)** | 16384 (16k) | 中等内存占用 | 给 OpenClaw 的 Agent/工具上下文留出空间 |
-| **警告 (Warning)** | 32k - 131k | ~9GB+ | 开始出现轻微延迟 |
-| **危险 (Critical)** | 262k+ | ~18GB+ | 系统严重卡顿 (Swap) |
+| **推荐 (Recommended)** | 16384 (16k) | 中等内存占用 | 适合作为 16GB Demo 环境的默认值 |
+| **实验 (Experimental)** | 24576 - 32768 (24k - 32k) | 更高内存压力 | 适合更长对话；需要观察 macOS 内存压力 |
+| **高风险 (Risky)** | 65536+ (64k+) | 较重内存压力 | 在 16GB 机器上可能变慢或不稳定 |
+| **不推荐 (Not recommended)** | 131k - 262k | 很重内存压力 | 模型理论支持，但这台机器大概率不舒服 |
 
 ### 2. 优化建议
 
 * **上下文大小**: 本 Demo 默认限制为 **16384**，给 OpenClaw 的 Agent 指令、会话状态和工具上下文留出足够空间，同时仍适合轻量 Demo 模型。
 * **模型选择**: 本仓库默认使用轻量 Demo 模型 **`qwen3.5:0.8b`**。如需更高质量，可切换到 **`qwen3.5:4b`**，但会带来更高内存压力。
+* **质量 vs 上下文**: 增大上下文主要帮助更长的对话，不会修复算术或推理质量。如果 `qwen3.5:0.8b` 给出明显错误答案，应优先考虑 `qwen3.5:4b`，而不是只增大上下文。
+* **实测基线**: 在 Mac Mini M4 16GB 上，`qwen3.5:0.8b` 使用 16k 上下文时，Ollama 中模型约 `2.4GB`，OpenClaw 容器约 `538MiB / 3GiB`，同时 macOS 已经有明显内存压缩。因此 **32k** 可以作为实验值，但不适合作为更稳妥的默认值。
+* **32k 测试**: 如需测试 32k，请同时在 `docker-compose.yml` 设置 `OPENCLAW_PROVIDERS_OLLAMA_NUM_CTX=32768`，并在 `config/openclaw.json` 设置 `"contextTokens": 32768`，然后重启 OpenClaw。
+
+### 3. 硬件选型建议 (Hardware Sizing)
+
+本仓库面向 **Mac Mini M4 16GB 统一内存**，它非常适合做本地 OpenClaw Demo，但不适合作为长期运行本地大模型的主力工作站。对于 Ollama + OpenClaw 来说，内存容量和内存带宽通常比单纯 CPU 更关键。
+
+| 目标 | 推荐 Mac 档位 | RAM | SSD | 实用模型范围 | 实用上下文 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 类似本仓库的轻量 Demo | Mac Mini M4 | 16GB | 512GB - 1TB | 0.5B - 4B | 16k 默认，32k 实验 |
+| 更舒服的本地 Agent | Mac Mini M4 Pro / Mac Studio M4 Max | 32GB - 36GB+ | 1TB+ | 4B - 8B | 16k - 32k |
+| 推荐日常主力配置 | Mac Studio M4 Max | 64GB | 1TB - 2TB | 8B - 14B | 32k - 64k |
+| 严肃本地大模型配置 | Mac Studio M4 Max / M3 Ultra | 96GB - 128GB+ | 2TB+ | 14B - 32B | 稳定时可尝试 64k |
+| 发烧级本地实验 | 高内存 Mac Studio Ultra | 192GB+ | 4TB+ | 32B - 70B 量化模型 | 取决于模型和速度容忍度 |
+
+对于本仓库当前机器，实际定位是：
+
+```text
+Mac Mini M4
+CPU/GPU: 10-core CPU / 10-core GPU
+RAM: 16GB unified memory
+SSD: 512GB or 1TB
+Model: qwen3.5:0.8b or qwen3.5:4b
+Context: 16k default, 32k experimental
+```
+
+如果你希望 OpenClaw 更像一个可靠的日常本地助手，可以稳定处理文件、工具调用、代码和推理，甜点配置更接近：
+
+```text
+Mac Studio M4 Max
+RAM: 64GB unified memory
+SSD: 2TB
+Model: 8B - 14B
+Context: 32k - 64k
+```
 
 ---
 
